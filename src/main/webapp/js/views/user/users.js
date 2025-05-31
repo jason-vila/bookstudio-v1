@@ -10,7 +10,27 @@
  * @author [Jason]
  */
 
-import { showToast, toggleButtonLoading } from '../../js/utils/ui/index.js';
+import {
+  showToast,
+  toggleButtonLoading,
+  placeholderColorSelect,
+  placeholderColorEditSelect,
+  initializeCropper,
+  setupBootstrapSelectDropdownStyles,
+  initializeTooltips
+} from '../../utils/ui/index.js';
+
+import { toggleTableLoadingState, setupDataTable } from '../../utils/tables/index.js';
+
+import {
+  isValidEmail,
+  isValidUsername,
+  isValidText,
+  isValidPassword,
+  doPasswordsMatch,
+  isValidImageFile,
+  validateImageFileUI
+} from '../../utils/validators/index.js';
 
 /*****************************************
  * GLOBAL VARIABLES AND HELPER FUNCTIONS
@@ -18,33 +38,6 @@ import { showToast, toggleButtonLoading } from '../../js/utils/ui/index.js';
 
 // Global variable to handle profile photo deletion in edit modal
 let deletePhotoFlag = false;
-
-function placeholderColorSelect() {
-	$('select.selectpicker').on('change', function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($select.val() !== "" && $select.val() !== null) {
-			$dropdown.removeClass('placeholder-color');
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorEditSelect() {
-	$('select[id^="edit"]').each(function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($filterOption.text().trim() === "No hay selección") {
-			$filterOption.css('color', 'var(--placeholder-color)');
-		} else {
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
 
 /*****************************************
  * TABLE HANDLING
@@ -108,10 +101,10 @@ function addRowToTable(user) {
 }
 
 function loadUsers() {
-	toggleButtonAndSpinner('loading');
+	toggleTableLoadingState('loading');
 
 	let safetyTimer = setTimeout(function() {
-		toggleButtonAndSpinner('loaded');
+		toggleTableLoadingState('loaded');
 		$('#tableContainer').removeClass('d-none');
 		$('#cardContainer').removeClass('h-100');
 	}, 8000);
@@ -386,56 +379,45 @@ function handleAddUserForm() {
 
 		// Email validation
 		if (field.is('#addUserEmail')) {
-			const email = field.val();
-			const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,6}$/;
-
-			if (!emailRegex.test(email)) {
-				errorMessage = 'Por favor ingrese un correo electrónico válido.';
+			const result = isValidEmail(field.val());
+			if (!result.valid) {
+				errorMessage = result.message;
 				isValid = false;
 			}
 		}
 
 		// Username validation
 		if (field.is('#addUserUsername')) {
-			const username = field.val();
-			const usernameRegex = /^[a-zA-Z0-9_À-ÿ]+$/;
-
-			if (username.length < 3) {
-				errorMessage = 'El nombre de usuario debe tener al menos 3 caracteres.';
-				isValid = false;
-			} else if (!usernameRegex.test(username)) {
-				errorMessage = 'El nombre de usuario solo puede contener letras, números y guiones bajos y caracteres acentuados.';
+			const result = isValidUsername(field.val());
+			if (!result.valid) {
+				errorMessage = result.message;
 				isValid = false;
 			}
 		}
-
+		
 		// First name validation
 		if (field.is('#addUserFirstName')) {
-			const firstName = field.val();
-
-			if (firstName.length < 3) {
-				errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+			const result = isValidText(field.val(), 'nombre');
+			if (!result.valid) {
 				isValid = false;
+				errorMessage = result.message;
 			}
 		}
 
 		// Last name validation
 		if (field.is('#addUserLastName')) {
-			const lastName = field.val();
-
-			if (lastName.length < 3) {
-				errorMessage = 'El apellido debe tener al menos 3 caracteres.';
+			const result = isValidText(field.val(), 'apellido');
+			if (!result.valid) {
 				isValid = false;
+				errorMessage = result.message;
 			}
 		}
 
 		// Password validation
 		if (field.is('#addUserPassword')) {
-			const password = field.val();
-			const passwordRegex = /^(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/;
-
-			if (!passwordRegex.test(password)) {
-				errorMessage = 'La contraseña debe tener 8 caracteres, una mayúscula, un número y un símbolo.';
+			const result = isValidPassword(field.val());
+			if (!result.valid) {
+				errorMessage = result.message;
 				isValid = false;
 			}
 		}
@@ -443,28 +425,24 @@ function handleAddUserForm() {
 		// Confirm password validation
 		if (field.is('#addUserConfirmPassword')) {
 			const password = $('#addUserPassword').val();
-			const confirmPassword = field.val();
-
-			if (confirmPassword !== password) {
-				errorMessage = 'Las contraseñas no coinciden.';
+			const result = doPasswordsMatch(password, field.val());
+			if (!result.valid) {
+				errorMessage = result.message;
 				isValid = false;
 			}
 		}
 
 		// Profile photo validation
 		if (field.is('#addUserProfilePhoto')) {
-			var file = field[0].files[0];
+			const file = field[0].files[0];
+			const result = isValidImageFile(file);
 
-			if (!file) {
+			if (!result.valid) {
+				isValid = false;
+				errorMessage = result.message;
+			} else {
 				field.removeClass('is-invalid');
 				return true;
-			}
-
-			var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-			if (!validExtensions.includes(file.type)) {
-				isValid = false;
-				errorMessage = 'Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.';
 			}
 		}
 
@@ -488,20 +466,7 @@ function handleAddUserForm() {
 }
 
 $('#addUserProfilePhoto, #editUserProfilePhoto').on('change', function() {
-	var fileInput = $(this);
-	var file = fileInput[0].files[0];
-
-	if (file) {
-		var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-		if (!validExtensions.includes(file.type)) {
-			fileInput.addClass('is-invalid');
-			fileInput.siblings('.invalid-feedback').html('Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.');
-		} else {
-			fileInput.removeClass('is-invalid');
-		}
-	} else {
-		fileInput.removeClass('is-invalid');
-	}
+	validateImageFileUI($(this));
 });
 
 function handleEditUserForm() {
@@ -648,38 +613,33 @@ function validateEditField(field) {
 
 	// First name validation
 	if (field.is('#editUserFirstName')) {
-		const firstName = field.val();
-
-		if (firstName.length < 3) {
-			errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+		const result = isValidText(field.val(), 'nombre');
+		if (!result.valid) {
 			isValid = false;
+			errorMessage = result.message;
 		}
 	}
 
 	// Last name validation
 	if (field.is('#editUserLastName')) {
-		const lastName = field.val();
-
-		if (lastName.length < 3) {
-			errorMessage = 'El apellido debe tener al menos 3 caracteres.';
+		const result = isValidText(field.val(), 'apellido');
+		if (!result.valid) {
 			isValid = false;
+			errorMessage = result.message;
 		}
 	}
 
 	// Profile photo validation
 	if (field.is('#editUserProfilePhoto')) {
-		var file = field[0].files[0];
+		const file = field[0].files[0];
+		const result = isValidImageFile(file);
 
-		if (!file) {
+		if (!result.valid) {
+			isValid = false;
+			errorMessage = result.message;
+		} else {
 			field.removeClass('is-invalid');
 			return true;
-		}
-
-		var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-		if (!validExtensions.includes(file.type)) {
-			isValid = false;
-			errorMessage = 'Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.';
 		}
 	}
 
@@ -1021,33 +981,6 @@ const $imageToCropAdd = $('#imageToCropAdd');
 const $cropperContainerEdit = $('#cropperContainerEdit');
 const $imageToCropEdit = $('#imageToCropEdit');
 
-function initializeCropper(file, $cropperContainer, $imageToCrop) {
-	const reader = new FileReader();
-	reader.onload = function(e) {
-		$cropperContainer.removeClass('d-none');
-		$imageToCrop.attr('src', e.target.result);
-
-		if (cropper) {
-			cropper.destroy();
-		}
-
-		cropper = new Cropper($imageToCrop[0], {
-			aspectRatio: 1,
-			viewMode: 1,
-			autoCropArea: 1,
-			responsive: true,
-			checkOrientation: false,
-			ready: function() {
-				$('.cropper-crop-box').css({
-					'border-radius': '50%',
-					'overflow': 'hidden'
-				});
-			}
-		});
-	};
-	reader.readAsDataURL(file);
-}
-
 $('#addUserProfilePhoto, #editUserProfilePhoto').on('change', function() {
 	const file = this.files[0];
 	deletePhotoFlag = false;
@@ -1070,7 +1003,7 @@ $('#addUserProfilePhoto, #editUserProfilePhoto').on('change', function() {
 			$container = $cropperContainerEdit;
 			$image = $imageToCropEdit;
 		}
-		initializeCropper(file, $container, $image);
+		initializeCropper(file, $container, $image, cropper);
 	} else {
 		if ($(this).is('#addUserProfilePhoto')) {
 			$cropperContainerAdd.addClass('d-none');
@@ -1093,54 +1026,6 @@ $('#addUserProfilePhoto, #editUserProfilePhoto').on('change', function() {
 		}
 	}
 });
-
-function setupBootstrapSelectDropdownStyles() {
-	const observer = new MutationObserver((mutationsList) => {
-		mutationsList.forEach((mutation) => {
-			mutation.addedNodes.forEach((node) => {
-				if (node.nodeType === 1 && node.classList.contains('dropdown-menu')) {
-					const $dropdown = $(node);
-					$dropdown.addClass('gap-1 px-2 rounded-3 mx-0 shadow');
-					$dropdown.find('.dropdown-item').addClass('rounded-2 d-flex align-items-center justify-content-between');
-
-					$dropdown.find('li:not(:first-child)').addClass('mt-1');
-
-					updateDropdownIcons($dropdown);
-				}
-			});
-		});
-	});
-
-	observer.observe(document.body, { childList: true, subtree: true });
-
-	$(document).on('click', '.bootstrap-select .dropdown-item', function() {
-		const $dropdown = $(this).closest('.dropdown-menu');
-		updateDropdownIcons($dropdown);
-	});
-}
-
-function updateDropdownIcons($dropdown) {
-	$dropdown.find('.dropdown-item').each(function() {
-		const $item = $(this);
-		let $icon = $item.find('i.bi-check2');
-
-		if ($item.hasClass('active') && $item.hasClass('selected')) {
-			if ($icon.length === 0) {
-				$('<i class="bi bi-check2 ms-auto"></i>').appendTo($item);
-			}
-		} else {
-			$icon.remove();
-		}
-	});
-}
-
-function initializeTooltips(container) {
-	$(container).find('[data-tooltip="tooltip"]').tooltip({
-		trigger: 'hover'
-	}).on('click', function() {
-		$(this).tooltip('hide');
-	});
-}
 
 function generatePDF(dataTable) {
 	const pdfBtn = $('#generatePDF');

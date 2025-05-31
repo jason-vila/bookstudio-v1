@@ -11,34 +11,18 @@
  * @author [Jason]
  */
 
-import { showToast, toggleButtonLoading } from '../../js/utils/ui/index.js';
+import {
+  showToast,
+  toggleButtonLoading,
+  placeholderColorSelect,
+  placeholderColorEditSelect,
+  setupBootstrapSelectDropdownStyles,
+  initializeTooltips
+} from '../../utils/ui/index.js';
 
-function placeholderColorSelect() {
-	$('select.selectpicker').on('change', function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
+import { toggleTableLoadingState, setupDataTable } from '../../utils/tables/index.js';
 
-		if ($select.val() !== "" && $select.val() !== null) {
-			$dropdown.removeClass('placeholder-color');
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorEditSelect() {
-	$('select[id^="edit"]').each(function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($filterOption.text().trim() === "No hay selección") {
-			$filterOption.css('color', 'var(--placeholder-color)');
-		} else {
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
+import { isValidText } from '../../utils/validators/index.js';
 
 /*****************************************
  * TABLE HANDLING
@@ -95,10 +79,10 @@ function addRowToTable(course) {
 }
 
 function loadCourses() {
-	toggleButtonAndSpinner('loading');
+	toggleTableLoadingState('loading');
 
 	let safetyTimer = setTimeout(function() {
-		toggleButtonAndSpinner('loaded');
+		toggleTableLoadingState('loaded');
 		$('#tableContainer').removeClass('d-none');
 		$('#cardContainer').removeClass('h-100');
 	}, 8000);
@@ -323,11 +307,10 @@ function handleAddCourseForm() {
 
 		// Name validation
 		if (field.is('#addCourseName')) {
-			const firstName = field.val();
-
-			if (firstName.length < 3) {
-				errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+			const result = isValidText(field.val(), 'nombre');
+			if (!result.valid) {
 				isValid = false;
+				errorMessage = result.message;
 			}
 		}
 
@@ -474,11 +457,10 @@ function validateEditField(field) {
 
 	// Name validation
 	if (field.is('#editCourseName')) {
-		const firstName = field.val();
-
-		if (firstName.length < 3) {
-			errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+		const result = isValidText(field.val(), 'nombre');
+		if (!result.valid) {
 			isValid = false;
+			errorMessage = result.message;
 		}
 	}
 
@@ -661,54 +643,6 @@ function loadModalData() {
 				$('#editCourseModal').modal('hide');
 			}
 		});
-	});
-}
-
-function setupBootstrapSelectDropdownStyles() {
-	const observer = new MutationObserver((mutationsList) => {
-		mutationsList.forEach((mutation) => {
-			mutation.addedNodes.forEach((node) => {
-				if (node.nodeType === 1 && node.classList.contains('dropdown-menu')) {
-					const $dropdown = $(node);
-					$dropdown.addClass('gap-1 px-2 rounded-3 mx-0 shadow');
-					$dropdown.find('.dropdown-item').addClass('rounded-2 d-flex align-items-center justify-content-between');
-
-					$dropdown.find('li:not(:first-child)').addClass('mt-1');
-
-					updateDropdownIcons($dropdown);
-				}
-			});
-		});
-	});
-
-	observer.observe(document.body, { childList: true, subtree: true });
-
-	$(document).on('click', '.bootstrap-select .dropdown-item', function() {
-		const $dropdown = $(this).closest('.dropdown-menu');
-		updateDropdownIcons($dropdown);
-	});
-}
-
-function updateDropdownIcons($dropdown) {
-	$dropdown.find('.dropdown-item').each(function() {
-		const $item = $(this);
-		let $icon = $item.find('i.bi-check2');
-
-		if ($item.hasClass('active') && $item.hasClass('selected')) {
-			if ($icon.length === 0) {
-				$('<i class="bi bi-check2 ms-auto"></i>').appendTo($item);
-			}
-		} else {
-			$icon.remove();
-		}
-	});
-}
-
-function initializeTooltips(container) {
-	$(container).find('[data-tooltip="tooltip"]').tooltip({
-		trigger: 'hover'
-	}).on('click', function() {
-		$(this).tooltip('hide');
 	});
 }
 

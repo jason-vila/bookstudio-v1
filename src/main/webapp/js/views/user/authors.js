@@ -11,7 +11,26 @@
  * @author [Jason]
  */
 
-import { showToast, toggleButtonLoading } from '../../js/utils/ui/index.js';
+import {
+  showToast,
+  toggleButtonLoading,
+  populateSelect,
+  placeholderColorSelect,
+  placeholderColorEditSelect,
+  placeholderColorDateInput,
+  initializeCropper,
+  setupBootstrapSelectDropdownStyles,
+  initializeTooltips
+} from '../../utils/ui/index.js';
+
+import { toggleTableLoadingState, setupDataTable } from '../../utils/tables/index.js';
+
+import {
+  isValidText,
+  isValidBirthDate,
+  isValidImageFile,
+  validateImageFileUI
+} from '../../utils/validators/index.js';
 
 /*****************************************
  * GLOBAL VARIABLES AND HELPER FUNCTIONS
@@ -23,27 +42,6 @@ var literaryGenreList = [];
 
 // Global variable to handle photo deletion in edit modal
 let deletePhotoFlag = false;
-
-function populateSelect(selector, dataList, valueKey, textKey, badgeValueKey) {
-	const select = $(selector).selectpicker('destroy').empty();
-
-	dataList.forEach(item => {
-		if (item[valueKey]) {
-			let content = item[textKey];
-
-			if (badgeValueKey && item[badgeValueKey] !== undefined) {
-				const badgeValue = item[badgeValueKey];
-				content += ` <span class="badge bg-body-tertiary text-body-emphasis border ms-1">${badgeValue}</span>`;
-			}
-
-			select.append(
-				$('<option>', {
-					value: item[valueKey]
-				}).attr('data-content', content)
-			);
-		}
-	});
-}
 
 function populateSelectOptions() {
 	$.ajax({
@@ -76,55 +74,6 @@ function populateSelectOptions() {
 			} catch (e) {
 				console.error("Unexpected error:", xhr.status, xhr.responseText);
 			}
-		}
-	});
-}
-
-function placeholderColorSelect() {
-	$('select.selectpicker').on('change', function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($select.val() !== "" && $select.val() !== null) {
-			$dropdown.removeClass('placeholder-color');
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorEditSelect() {
-	$('select[id^="edit"]').each(function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($filterOption.text().trim() === "No hay selección") {
-			$filterOption.css('color', 'var(--placeholder-color)');
-		} else {
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorDateInput() {
-	$('input[type="date"]').each(function() {
-		var $input = $(this);
-
-		if (!$input.val()) {
-			$input.css('color', 'var(--placeholder-color)');
-		} else {
-			$input.css('color', '');
-		}
-	});
-
-	$('input[type="date"]').on('change input', function() {
-		var $input = $(this);
-
-		if (!$input.val()) {
-			$input.css('color', 'var(--placeholder-color)');
-		} else {
-			$input.css('color', '');
 		}
 	});
 }
@@ -190,10 +139,10 @@ function addRowToTable(author) {
 }
 
 function loadAuthors() {
-	toggleButtonAndSpinner('loading');
+	toggleTableLoadingState('loading');
 
 	let safetyTimer = setTimeout(function() {
-		toggleButtonAndSpinner('loaded');
+		toggleTableLoadingState('loaded');
 		$('#tableContainer').removeClass('d-none');
 		$('#cardContainer').removeClass('h-100');
 	}, 8000);
@@ -440,44 +389,33 @@ function handleAddAuthorForm() {
 
 		// Name validation
 		if (field.is('#addAuthorName')) {
-			const firstName = field.val();
-
-			if (firstName.length < 3) {
-				errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+			const result = isValidText(field.val(), 'nombre');
+			if (!result.valid) {
 				isValid = false;
+				errorMessage = result.message;
 			}
 		}
 
 		// Birth date validation
 		if (field.is('#addAuthorBirthDate')) {
-			const birthDate = new Date(field.val());
-			const today = new Date();
-			const minAge = 10;
-			const minDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-
-			if (birthDate > today) {
-				errorMessage = 'La fecha de nacimiento no puede ser en el futuro.';
+			const result = isValidBirthDate(field.val());
+			if (!result.valid) {
 				isValid = false;
-			} else if (birthDate > minDate) {
-				errorMessage = `El autor debe tener al menos ${minAge} años.`;
-				isValid = false;
+				errorMessage = result.message;
 			}
 		}
 
 		// Photo validation
 		if (field.is('#addAuthorPhoto')) {
-			var file = field[0].files[0];
+			const file = field[0].files[0];
+			const result = isValidImageFile(file);
 
-			if (!file) {
+			if (!result.valid) {
+				isValid = false;
+				errorMessage = result.message;
+			} else {
 				field.removeClass('is-invalid');
 				return true;
-			}
-
-			var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-			if (!validExtensions.includes(file.type)) {
-				isValid = false;
-				errorMessage = 'Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.';
 			}
 		}
 
@@ -501,20 +439,7 @@ function handleAddAuthorForm() {
 }
 
 $('#addAuthorPhoto, #editAuthorPhoto').on('change', function() {
-	var fileInput = $(this);
-	var file = fileInput[0].files[0];
-
-	if (file) {
-		var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-		if (!validExtensions.includes(file.type)) {
-			fileInput.addClass('is-invalid');
-			fileInput.siblings('.invalid-feedback').html('Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.');
-		} else {
-			fileInput.removeClass('is-invalid');
-		}
-	} else {
-		fileInput.removeClass('is-invalid');
-	}
+	validateImageFileUI($(this));
 });
 
 function handleEditAuthorForm() {
@@ -660,44 +585,33 @@ function validateEditField(field) {
 
 	// Name validation
 	if (field.is('#editAuthorName')) {
-		const firstName = field.val();
-
-		if (firstName.length < 3) {
-			errorMessage = 'El nombre debe tener al menos 3 caracteres.';
+		const result = isValidText(field.val(), 'nombre');
+		if (!result.valid) {
 			isValid = false;
+			errorMessage = result.message;
 		}
 	}
 
 	// Birth date validation
 	if (field.is('#editAuthorBirthDate')) {
-		const birthDate = new Date(field.val());
-		const today = new Date();
-		const minAge = 10;
-		const minDate = new Date(today.getFullYear() - minAge, today.getMonth(), today.getDate());
-
-		if (birthDate > today) {
-			errorMessage = 'La fecha de nacimiento no puede ser en el futuro.';
+		const result = isValidBirthDate(field.val());
+		if (!result.valid) {
 			isValid = false;
-		} else if (birthDate > minDate) {
-			errorMessage = `El autor debe tener al menos ${minAge} años.`;
-			isValid = false;
+			errorMessage = result.message;
 		}
 	}
-
+	
 	// Photo validation
 	if (field.is('#editAuthorPhoto')) {
-		var file = field[0].files[0];
+		const file = field[0].files[0];
+		const result = isValidImageFile(file);
 
-		if (!file) {
+		if (!result.valid) {
+			isValid = false;
+			errorMessage = result.message;
+		} else {
 			field.removeClass('is-invalid');
 			return true;
-		}
-
-		var validExtensions = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-
-		if (!validExtensions.includes(file.type)) {
-			isValid = false;
-			errorMessage = 'Solo se permiten imágenes en formato JPG, PNG, GIF o WEBP.';
 		}
 	}
 
@@ -956,33 +870,6 @@ const $imageToCropAdd = $('#imageToCropAdd');
 const $cropperContainerEdit = $('#cropperContainerEdit');
 const $imageToCropEdit = $('#imageToCropEdit');
 
-function initializeCropper(file, $cropperContainer, $imageToCrop) {
-	const reader = new FileReader();
-	reader.onload = function(e) {
-		$cropperContainer.removeClass('d-none');
-		$imageToCrop.attr('src', e.target.result);
-
-		if (cropper) {
-			cropper.destroy();
-		}
-
-		cropper = new Cropper($imageToCrop[0], {
-			aspectRatio: 1,
-			viewMode: 1,
-			autoCropArea: 1,
-			responsive: true,
-			checkOrientation: false,
-			ready: function() {
-				$('.cropper-crop-box').css({
-					'border-radius': '50%',
-					'overflow': 'hidden'
-				});
-			}
-		});
-	};
-	reader.readAsDataURL(file);
-}
-
 $('#addAuthorPhoto, #editAuthorPhoto').on('change', function() {
 	const file = this.files[0];
 	deletePhotoFlag = false;
@@ -1005,7 +892,7 @@ $('#addAuthorPhoto, #editAuthorPhoto').on('change', function() {
 			$container = $cropperContainerEdit;
 			$image = $imageToCropEdit;
 		}
-		initializeCropper(file, $container, $image);
+		initializeCropper(file, $container, $image, cropper);
 	} else {
 		if ($(this).is('#addAuthorPhoto')) {
 			$cropperContainerAdd.addClass('d-none');
@@ -1028,54 +915,6 @@ $('#addAuthorPhoto, #editAuthorPhoto').on('change', function() {
 		}
 	}
 });
-
-function setupBootstrapSelectDropdownStyles() {
-	const observer = new MutationObserver((mutationsList) => {
-		mutationsList.forEach((mutation) => {
-			mutation.addedNodes.forEach((node) => {
-				if (node.nodeType === 1 && node.classList.contains('dropdown-menu')) {
-					const $dropdown = $(node);
-					$dropdown.addClass('gap-1 px-2 rounded-3 mx-0 shadow');
-					$dropdown.find('.dropdown-item').addClass('rounded-2 d-flex align-items-center justify-content-between');
-
-					$dropdown.find('li:not(:first-child)').addClass('mt-1');
-
-					updateDropdownIcons($dropdown);
-				}
-			});
-		});
-	});
-
-	observer.observe(document.body, { childList: true, subtree: true });
-
-	$(document).on('click', '.bootstrap-select .dropdown-item', function() {
-		const $dropdown = $(this).closest('.dropdown-menu');
-		updateDropdownIcons($dropdown);
-	});
-}
-
-function updateDropdownIcons($dropdown) {
-	$dropdown.find('.dropdown-item').each(function() {
-		const $item = $(this);
-		let $icon = $item.find('i.bi-check2');
-
-		if ($item.hasClass('active') && $item.hasClass('selected')) {
-			if ($icon.length === 0) {
-				$('<i class="bi bi-check2 ms-auto"></i>').appendTo($item);
-			}
-		} else {
-			$icon.remove();
-		}
-	});
-}
-
-function initializeTooltips(container) {
-	$(container).find('[data-tooltip="tooltip"]').tooltip({
-		trigger: 'hover'
-	}).on('click', function() {
-		$(this).tooltip('hide');
-	});
-}
 
 function generatePDF(dataTable) {
 	const pdfBtn = $('#generatePDF');

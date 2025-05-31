@@ -580,6 +580,6 @@
 		<jsp:param name="currentPage" value="users.js" />
 	</jsp:include>
 
-	<script src="js/utils/password.js" defer></script>
+	<script src="js/utils/ui/password.js" defer></script>
 </body>
 </html>

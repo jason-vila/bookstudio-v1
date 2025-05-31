@@ -13,33 +13,24 @@
 /*****************************************
  * GLOBAL VARIABLES AND HELPER FUNCTIONS
  *****************************************/
+import {
+  showToast,
+  toggleButtonLoading,
+  populateSelect,
+  placeholderColorSelect,
+  placeholderColorEditSelect,
+  placeholderColorDateInput,
+  setupBootstrapSelectDropdownStyles,
+  initializeTooltips
+} from '../../utils/ui/index.js';
 
-import { showToast, toggleButtonLoading } from '../../js/utils/ui/index.js';
+import { toggleTableLoadingState, setupDataTable } from '../../utils/tables/index.js';
+
+import { isValidReturnDate, isValidLoanQuantity } from '../../utils/validators/index.js';
 
 // Global list of books and students for the selectpickers
 var bookList = [];
 var studentList = [];
-
-function populateSelect(selector, dataList, valueKey, textKey, badgeValueKey) {
-	const select = $(selector).selectpicker('destroy').empty();
-
-	dataList.forEach(item => {
-		if (item[valueKey]) {
-			let content = item[textKey];
-
-			if (badgeValueKey && item[badgeValueKey] !== undefined) {
-				const badgeValue = item[badgeValueKey];
-				content += ` <span class="badge bg-body-tertiary text-body-emphasis border ms-1">${badgeValue}</span>`;
-			}
-
-			select.append(
-				$('<option>', {
-					value: item[valueKey]
-				}).attr('data-content', content)
-			);
-		}
-	});
-}
 
 function populateSelectOptions() {
 	$.ajax({
@@ -81,55 +72,6 @@ function populateSelectOptions() {
 			} catch (e) {
 				console.error("Unexpected error:", xhr.status, xhr.responseText);
 			}
-		}
-	});
-}
-
-function placeholderColorSelect() {
-	$('select.selectpicker').on('change', function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($select.val() !== "" && $select.val() !== null) {
-			$dropdown.removeClass('placeholder-color');
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorEditSelect() {
-	$('select[id^="edit"]').each(function() {
-		var $select = $(this);
-		var $dropdown = $select.closest('.bootstrap-select');
-		var $filterOption = $dropdown.find('.filter-option-inner-inner');
-
-		if ($filterOption.text().trim() === "No hay selección") {
-			$filterOption.css('color', 'var(--placeholder-color)');
-		} else {
-			$filterOption.css('color', 'var(--bs-body-color)');
-		}
-	});
-}
-
-function placeholderColorDateInput() {
-	$('input[type="date"]').each(function() {
-		var $input = $(this);
-
-		if (!$input.val()) {
-			$input.css('color', 'var(--placeholder-color)');
-		} else {
-			$input.css('color', '');
-		}
-	});
-
-	$('input[type="date"]').on('change input', function() {
-		var $input = $(this);
-
-		if (!$input.val()) {
-			$input.css('color', 'var(--placeholder-color)');
-		} else {
-			$input.css('color', '');
 		}
 	});
 }
@@ -227,10 +169,10 @@ function addRowToTable(loan) {
 }
 
 function loadLoans() {
-	toggleButtonAndSpinner('loading');
+	toggleTableLoadingState('loading');
 
 	let safetyTimer = setTimeout(function() {
-		toggleButtonAndSpinner('loaded');
+		toggleTableLoadingState('loaded');
 		$('#tableContainer').removeClass('d-none');
 		$('#cardContainer').removeClass('h-100');
 	}, 8000);
@@ -436,20 +378,10 @@ function handleAddLoanForm() {
 
 		// Return date validation
 		if (field.is('#addReturnDate') && $('#addLoanDate').val()) {
-			var loanDate = new Date($('#addLoanDate').val());
-			var returnDate = new Date(field.val());
-
-			var maxReturnDate = new Date(loanDate);
-			maxReturnDate.setDate(loanDate.getDate() + 14);
-
-			if (returnDate <= loanDate) {
+			const result = isValidReturnDate($('#addLoanDate').val(), field.val());
+			if (!result.valid) {
 				field.addClass('is-invalid');
-				errorMessage = 'La fecha de devolución debe ser posterior de la de préstamo.';
-				field.siblings('.invalid-feedback').html(errorMessage);
-				isValid = false;
-			} else if (returnDate > maxReturnDate) {
-				field.addClass('is-invalid');
-				errorMessage = 'La fecha de devolución no puede superar los 14 días.';
+				errorMessage = result.message;
 				field.siblings('.invalid-feedback').html(errorMessage);
 				isValid = false;
 			}
@@ -457,16 +389,10 @@ function handleAddLoanForm() {
 
 		// Quantity validation
 		if (field.is('#addLoanQuantity')) {
-			let quantity = parseInt(field.val(), 10);
-			let maxQuantity = parseInt(field.attr('max'), 10);
-
-			if (quantity > maxQuantity) {
-				if (maxQuantity === 1) {
-					errorMessage = `Solo hay ${maxQuantity} ejemplar disponible para este libro.`;
-				} else {
-					errorMessage = `Solo hay ${maxQuantity} ejemplares disponibles para este libro.`;
-				}
+			const result = isValidLoanQuantity(parseInt(field.val(), 10), parseInt(field.attr('max'), 10));
+			if (!result.valid) {
 				field.addClass('is-invalid');
+				errorMessage = result.message;
 				field.siblings('.invalid-feedback').html(errorMessage);
 				isValid = false;
 			}
@@ -675,20 +601,10 @@ function validateEditField(field) {
 
 	// Return date validation
 	if (field.is('#editReturnDate') && $('#editLoanDate').val()) {
-		var loanDate = new Date($('#editLoanDate').val());
-		var returnDate = new Date(field.val());
-
-		var maxReturnDate = new Date(loanDate);
-		maxReturnDate.setDate(loanDate.getDate() + 14);
-
-		if (returnDate <= loanDate) {
+		const result = isValidReturnDate($('#editLoanDate').val(), field.val());
+		if (!result.valid) {
 			field.addClass('is-invalid');
-			errorMessage = 'La fecha de devolución debe ser posterior de la de préstamo.';
-			field.siblings('.invalid-feedback').html(errorMessage);
-			isValid = false;
-		} else if (returnDate > maxReturnDate) {
-			field.addClass('is-invalid');
-			errorMessage = 'La fecha de devolución no puede superar los 14 días.';
+			errorMessage = result.message;
 			field.siblings('.invalid-feedback').html(errorMessage);
 			isValid = false;
 		}
@@ -890,54 +806,6 @@ function loadModalData() {
 				$('#editLoanModal').modal('hide');
 			}
 		});
-	});
-}
-
-function setupBootstrapSelectDropdownStyles() {
-	const observer = new MutationObserver((mutationsList) => {
-		mutationsList.forEach((mutation) => {
-			mutation.addedNodes.forEach((node) => {
-				if (node.nodeType === 1 && node.classList.contains('dropdown-menu')) {
-					const $dropdown = $(node);
-					$dropdown.addClass('gap-1 px-2 rounded-3 mx-0 shadow');
-					$dropdown.find('.dropdown-item').addClass('rounded-2 d-flex align-items-center justify-content-between');
-
-					$dropdown.find('li:not(:first-child)').addClass('mt-1');
-
-					updateDropdownIcons($dropdown);
-				}
-			});
-		});
-	});
-
-	observer.observe(document.body, { childList: true, subtree: true });
-
-	$(document).on('click', '.bootstrap-select .dropdown-item', function() {
-		const $dropdown = $(this).closest('.dropdown-menu');
-		updateDropdownIcons($dropdown);
-	});
-}
-
-function updateDropdownIcons($dropdown) {
-	$dropdown.find('.dropdown-item').each(function() {
-		const $item = $(this);
-		let $icon = $item.find('i.bi-check2');
-
-		if ($item.hasClass('active') && $item.hasClass('selected')) {
-			if ($icon.length === 0) {
-				$('<i class="bi bi-check2 ms-auto"></i>').appendTo($item);
-			}
-		} else {
-			$icon.remove();
-		}
-	});
-}
-
-function initializeTooltips(container) {
-	$(container).find('[data-tooltip="tooltip"]').tooltip({
-		trigger: 'hover'
-	}).on('click', function() {
-		$(this).tooltip('hide');
 	});
 }
 
